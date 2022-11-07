@@ -21,3 +21,6 @@ If you have `pipenv`, just type `pipenv install` to obtain these.
 ### Example usage
 `./plotdensity.py exampledata/benzene.json exampledata/benzene.npy`
 ![Contour plot of benzene electron density](./figures/benzene_contour.svg)
+
+`./plotdensity.py exampledata/benzene.json exampledata/benzene.npy -i`
+![Interactive plot of benzene electron density](./figures/benzene_interactive.png)
