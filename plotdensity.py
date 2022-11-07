@@ -3,11 +3,49 @@
 import argparse
 import json
 import numpy as np
+from scipy.spatial import distance_matrix
 import math
 from ast import literal_eval as make_tuple
 
-from numba import njit, prange, jit
+from numba import njit, prange, jit, guvectorize
+from numba import float64 as ndbl, boolean as nbool
 
+def uniquetol_old(X, tol=1e-8):
+    """Return boolean array indicating the unique rows of X (within a tolerance)"""
+    X = np.asarray(X)
+    dmat = distance_matrix(X, X, p=np.inf)
+    res = np.zeros([X.shape[0]], dtype=bool)
+    numba_uniquetol_old(dmat, tol, res)
+    return res
+
+def uniquetol(X, tol=1e-8):
+    """Return boolean array indicating the unique rows of X (within a tolerance)"""
+    X = np.asarray(X)
+    res = np.zeros([X.shape[0]], dtype=bool)
+    numba_uniquetol(X, tol, res)
+    return res
+
+def within_tol(u, v, tol=1e-8):
+    return np.linalg.norm(np.asarray(u) - np.asarray(v)) < tol
+
+
+@njit
+def numba_uniquetol(X, tol, res):
+    for i in range(X.shape[0]):
+        res[i] = True
+        for j in range(i):
+            if res[j]:
+                # row j is unique, so check if
+                # row i is different from row j
+                stop_because_unique = False
+                for k in range(X.shape[1]):
+                    if abs(X[i, k] - X[j, k]) > tol:
+                        # definitely unique
+                        stop_because_unique = True
+                        break
+                if not stop_because_unique:
+                    res[i] = False
+                    break
 
 class ChargeDensityEval:
     def __init__(self, shells, density):
@@ -32,11 +70,45 @@ class ChargeDensityEval:
             for p in range(shell["nprim"]):
                 prim_coefs.append(shell["coefs"][p])
                 prim_exps.append(shell["exps"][p])
-        self.shell_coords = np.array(shell_coords)
-        self.shell_nprim = np.array(shell_nprim)
-        self.shell_am = np.array(shell_am)
-        self.prim_coefs = np.array(prim_coefs)
-        self.prim_exps = np.array(prim_exps)
+        
+
+        # calculate the number of unique primitive pair centers
+        # this eliminates symmetry
+        prim_pair_centers = []
+        nshells = len(self.shells)
+        for i in range(nshells):
+            coord1 = np.asarray(shell_coords[i])
+            for j in range(i):
+                coord2 = np.asarray(shell_coords[j])
+                if not within_tol(coord1, coord2):
+                    for p1 in range(shell_nprim[i]):
+                        for p2 in range(shell_nprim[j]):
+                            a = prim_exps[p1]
+                            b = prim_exps[p2]
+                            p = a + b
+                            P = (a * coord1 + b * coord2) / p
+                            prim_pair_centers.append(list(P))
+        prim_pair_centers.extend(shell_coords)
+        self.prim_pair_centers = np.asarray(prim_pair_centers)
+        unique_ctrs = uniquetol(self.prim_pair_centers)
+        self.unique_prim_pair_centers = self.prim_pair_centers[unique_ctrs]
+
+
+        self.shell_coords = np.asarray(shell_coords)
+        self.shell_nprim = np.asarray(shell_nprim)
+        self.shell_am = np.asarray(shell_am)
+        self.prim_coefs = np.asarray(prim_coefs)
+        self.prim_exps = np.asarray(prim_exps)
+        self.natoms = uniquetol(self.shell_coords).sum()
+    
+    def print_out(self):
+        formatstr = '{:<35}{:>10}'
+        print(formatstr.format("Number of atoms: ", self.natoms))
+        print(formatstr.format("Number of shells: ", len(self.shells)))
+        print(formatstr.format("Number of basis functions: ", self.nbf))
+        print(formatstr.format("Number of primitives: ", self.nprim))
+        print(formatstr.format("Primitive pairs: ", math.comb(self.nprim, 2)))
+        print(formatstr.format("Unique primitive pair centers: ", self.unique_prim_pair_centers.shape[0]))
 
     def compute_phi(self, x, y, z):
         res = np.zeros([x.shape[0], self.nbf])
@@ -83,11 +155,12 @@ class ChargeDensityEval:
         y = np.arange(self.l[1], self.u[1], spacing)
         z = np.arange(self.l[2], self.u[2], spacing)
         self.X, self.Y, self.Z = np.meshgrid(x, y, z)
+        self.spacing = spacing
 
     def get_2d_grid(self, spacing, origin, xdir, ydir):
         self.calc_drawbox()
         normal = np.cross(xdir, ydir)
-        origin = np.array(origin)
+        origin = np.asarray(origin)
         projection = self.shell_coords - origin
         projection = projection - np.outer(np.dot(projection, normal), normal)
         projections_x = np.dot(projection, xdir)
@@ -110,6 +183,24 @@ class ChargeDensityEval:
         self.density_grid = self.compute_density(self.X.flatten(), self.Y.flatten(), self.Z.flatten()).reshape(
             self.X.shape
         )
+    
+    def get_nice_basis_functions(self):
+        prim_offset = 0
+        ao = 0
+        self.nice_basis_functions = []
+        for ns in range(len(self.shells)):
+            am = self.shell_am[ns]
+            nprim = self.shell_nprim[ns]
+            center = self.shell_coords[ns]
+            coefs = self.prim_coefs[prim_offset:prim_offset + nprim]
+            exps = self.prim_exps[prim_offset:prim_offset + nprim]
+            for amx in range(am, -1, -1):
+                for amy in range(am - amx, -1, -1):
+                    amz = am - amx - amy
+                    self.nice_basis_functions.append((center, coefs, exps, amx, amy, amz))
+                    ao += 1
+            prim_offset += nprim
+
 
 
 @njit(parallel=True)
@@ -133,6 +224,20 @@ def compute_phi_numba(x, y, z, shell_am, shell_nprim, shell_coords, prim_coefs, 
                     res[npt, ao] = cexpr * dx**amx * dy**amy * dz**amz
                     ao += 1
             prim_offset += shell_nprim[ns]
+    return res
+
+@njit(parallel=True)
+def compute_single_phi_numba(x, y, z, center, prim_coefs, prim_exps, amx, amy, amz, res):
+    npts = x.shape[0]
+    for npt in prange(npts):
+        dx = x[npt] - center[0]
+        dy = y[npt] - center[1]
+        dz = z[npt] - center[2]
+        r2 = dx**2 + dy**2 + dz**2
+        cexpr = 0.0
+        for p in range(prim_coefs.shape[0]):
+            cexpr += prim_coefs[p] * np.exp((-1.0 * prim_exps[p] * r2))
+        res[npt] = cexpr * dx**amx * dy**amy * dz**amz
     return res
 
 
@@ -179,6 +284,11 @@ def main():
         action="store_true",
         help="do volume rendering of the density rather than isosurface plot (interactive mode)",
     )
+    #parser.add_argument(
+    #    "--aopair_radii",
+    #    action="store_true",
+    #    help="calculate distribution of AO-pair radii",
+    #)
     parser.add_argument(
         "--plane_origin",
         type=float,
@@ -213,6 +323,8 @@ def main():
 
     cde = ChargeDensityEval(shells, density)
 
+    cde.print_out()
+
     if args.interactive:
         interactive(cde, args.spacing, args)
     else:
@@ -222,9 +334,9 @@ def main():
 def contourplot(cde, args):
     import matplotlib.pyplot as plt
 
-    xdir = np.array(args.plane_x)
+    xdir = np.asarray(args.plane_x)
     xdir = xdir / np.linalg.norm(xdir)
-    ydir = np.array(args.plane_y)
+    ydir = np.asarray(args.plane_y)
     ydir = ydir - ydir.dot(xdir) * xdir
     ydir = ydir / np.linalg.norm(ydir)
     cde.get_2d_grid(0.05, args.plane_origin, xdir, ydir)
@@ -247,7 +359,7 @@ def interactive(cde, spacing, args):
     pdata = pv.wrap(cde.density_grid)
 
     grid = pv.UniformGrid()
-    grid.dimensions = np.array(cde.density_grid.shape)
+    grid.dimensions = np.asarray(cde.density_grid.shape)
     grid.origin = tuple(cde.l)
     grid.spacing = [spacing, spacing, spacing]
     grid.point_data["density"] = cde.density_grid.flatten(order="F")
