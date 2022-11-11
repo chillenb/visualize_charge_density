@@ -75,12 +75,12 @@ def main():
 
 
 def contourplot(cde, args):
-    """
+    """Make a 2D contour plot of the density
 
-    :param cde:
-    :param args:
-    :return:
-    """
+    Args:
+        cde (ChargeDensityEval): charge density evaluation object
+        args (Namespace): arguments from argparse
+    """    
     import matplotlib.pyplot as plt
 
     xdir = np.asarray(args.plane_x)
