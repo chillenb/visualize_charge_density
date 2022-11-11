@@ -1,6 +1,10 @@
 # visualize_charge_density
 
-The script `plotdensity.py` can make 3D and 2D plots of the electron density from a closed-shell SCF calculation. You must supply:
+The script `plotdensity.py` can make 3D and 2D plots of the electron density from a closed-shell SCF calculation. For 2D plots, it is more efficient than generating `.cube` files since the density is computed only on the required 2D grid.
+
+Thanks to [Numba](https://github.com/numba/numba), it's multithreaded and fast!
+
+You must supply:
 
 1. a `.json` file describing the geometry of the molecule and the basis set used
 2. A `.npy` file containing a density matrix
