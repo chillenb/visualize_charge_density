@@ -9,7 +9,7 @@ from chargedensityeval import ChargeDensityEval
 
 def main():
     parser = argparse.ArgumentParser(
-        prog="eval_density",
+        prog="dump_density",
         description="Evaluate the electron density of a molecule on a 2D grid, given a basis set and a density matrix",
     )
     parser.add_argument(

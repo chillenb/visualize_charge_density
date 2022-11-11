@@ -41,14 +41,14 @@ Try out 3D interactive mode with the `-i` flag:
 `./plotdensity.py exampledata/benzene.json exampledata/benzene.npy -i`
 ![Interactive plot of benzene electron density](./figures/benzene_interactive.png)
 
-If all you want to do is evaluate the electron density on a 2D grid, then you can use the script `evaldensity.py`:
+If all you want to do is evaluate the electron density on a 2D grid, then you can use the script `dumpdensity.py`:
 
-`./evaldensity.py exampledata/benzene.json exampledata/benzene.npy -o density_on_2d_grid.npz`
+`./dumpdensity.py exampledata/benzene.json exampledata/benzene.npy -o density_on_2d_grid.npz`
 
 By default, the density is evaluated on the plane {z=0}. You can choose another plane via the options `--plane_origin`, `--plane_x`, and `--plane_y`. For instance, the following command will sample on the plane {y=0.5}.
 
 ```
-./evaldensity.py exampledata/benzene.json exampledata/benzene.npy \
+./dumpdensity.py exampledata/benzene.json exampledata/benzene.npy \
 -o density_on_2d_grid.npz \
 --plane_origin 0.5 0.5 0.5 \
 --plane_x 1 0 0 \
