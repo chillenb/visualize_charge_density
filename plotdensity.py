@@ -7,6 +7,7 @@ import math
 
 from chargedensityeval import ChargeDensityEval
 
+
 def main():
     parser = argparse.ArgumentParser(
         prog="visualize_charge_density",
@@ -80,7 +81,7 @@ def contourplot(cde, args):
     Args:
         cde (ChargeDensityEval): charge density evaluation object
         args (Namespace): arguments from argparse
-    """    
+    """
     import matplotlib.pyplot as plt
 
     xdir = np.asarray(args.plane_x)
@@ -94,7 +95,13 @@ def contourplot(cde, args):
     plt.xlabel("x (Bohr)")
     plt.ylabel("y (Bohr)")
     plt.title("$\\log_{10}$(density)")
-    plt.contourf(cde.X2d, cde.Y2d, np.log10(cde.density_grid), levels=np.arange(-1.5, 1, 0.1))
+    plt.contourf(
+        cde.X2d,
+        cde.Y2d,
+        np.log10(cde.density_grid),
+        levels=np.arange(-1.5, 1, 0.1),
+        extend="both",
+    )
     plt.colorbar()
     plt.show()
 
@@ -103,8 +110,8 @@ def interactive(cde, spacing, args):
     """
     This function is a modified version of add_mesh_isovalue from pyvista
     (file pyvista/plotting/widgets.py)
-    which is licensed under the MIT license (reproduced below).   
-    
+    which is licensed under the MIT license (reproduced below).
+
     The MIT License
 
     Copyright (c) 2017-2022 The PyVista Developers
